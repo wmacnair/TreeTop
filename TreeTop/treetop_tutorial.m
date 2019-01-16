@@ -10,7 +10,7 @@
 % To run TreeTop, there are three functions:
 %
 % * |treetop_pre_run|: Diagnostic function to examine the distributions of markers across the input files, and to use mutual information to help determine any markers which could be excluded.
-% * |treetop|: Runs treetop non-recursively. |parpool| should be called before running. Outputs produced are: TreeTop layout annotated by input (and extra) markers, to assist with understanding what processes are taking place in the data; TreeTop layout annotated by the input files at each reference node; distribution of the density values calculated for each reference node (as a diagnostic for determining best value of sigma to use); distribution of branching scores over the data, including whether any are significant, plus the branches and branching point identified by TreeTop; profiles of markers as the identifed branches are traversed through the branching point.
+% * |treetop|: Runs treetop non-recursively. |parpool| should be called before running. Outputs produced are: TreeTop layout annotated by input (and extra) markers, to assist with understanding what processes are taking place in the data; TreeTop layout annotated by the input files at each reference node; distribution of the density values calculated for each reference node (as a diagnostic for determining best value of sigma to use); distribution of branching scores over the data, including whether any are higher than those observed in synthetic non-branching distributions, plus the branches and branching point identified by TreeTop; profiles of markers as the identifed branches are traversed through the branching point.
 % * |treetop_recursive|: Runs treetop recursively, so that any branches identified in the whole dataset are then analysed by TreeTop for further branching, and so on. |parpool| should be called before running. Outputs produced are: TreeTop layout annotated by all branches and sub-branches, plus _p_-values of the associated branching points.
 
 
@@ -35,9 +35,9 @@
 % To run the following code, please enter the location of the |treetop_data| directory, and where you would like outputs to be saved.
 
 % define directory for data
-data_dir		= 'X:/Packages/treetop package/treetop_data';
+data_dir		= '/path/to/treetop_data';
 % define directory for outputs
-output_dir		= 'X:/Packages/treetop package';
+output_dir		= '/path/to/outputs';
 
 % check these
 if ~exist(data_dir, 'dir') | isempty(output_dir)
@@ -204,11 +204,12 @@ treetop_recursive(input_struct, options_struct)
 % * _[output_name] branching outputs.png_
 %
 % The first subplot shows the TreeTop layout annotated by the branching 
-% score calculated for each reference node. The second subplot shows the 
-% empirical cumulative distribution function of the values displayed in 
-% subplot 1. The vertical dotted line shows the 95th percentile for the 
-% corresponding null distribution. Any values to the right of this line 
-% are significant branching points. Subplot 3 shows the branches 
+% score calculated for each reference node, normalized by scores from a 
+% non-branching distribution. The second subplot shows the empirical 
+% cumulative distribution function of the values displayed in subplot 1. 
+% The vertical dotted line is at 1. Any values to the right of this line 
+% have normalized branching scores higher than those observed in 
+% synthetic non-branching distributions. Subplot 3 shows the branches 
 % associated with the point with the highest branching score, and the 
 % branch point itself (in black). Subplot 4 compares the branches 
 % identified with the labels from the input files; the total of each 

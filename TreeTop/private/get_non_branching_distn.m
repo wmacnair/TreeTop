@@ -1,13 +1,13 @@
-%% get_null_distribution: 
-function null_distribution = get_null_distribution(n_ref_cells, n_points, n_dims)
+%% get_non_branching_distn: 
+function non_branching_distn = get_non_branching_distn(n_ref_cells, n_points, n_dims)
 	if n_points <= 1000
-		fprintf('too few observations for proper null distribution; not significant\n');
-		null_distribution 	= Inf;
+		fprintf('too few observations for proper non-branching comparison distribution; all scores normalized to 0\n');
+		non_branching_distn 	= Inf;
 		return
 	end
 
-	% load all null distributions
-	load('treetop null distns.mat', 'lookup_table', 'null_cell')
+	% load all non-branching distributions
+	load('treetop non-branching distns.mat', 'lookup_table', 'non_branching_cell')
 
 	% find closest distribution
 	n_ref_cells_list 	= unique(lookup_table.n_ref_cells);
@@ -31,14 +31,14 @@ function null_distribution = get_null_distribution(n_ref_cells, n_points, n_dims
 	end
 	n_dims_match	= n_dims_list(dims_idx);
 
-	% get this null distribution as outputs
+	% get this non-branching distribution as outputs
 	this_idx 		= find( ...
 		lookup_table.n_ref_cells == n_ref_cells_match & ...
 		lookup_table.n_points== n_points_match & ...
 		lookup_table.n_dims == n_dims_match ...
 		);
 	if numel(this_idx) ~= 1
-		error('null distribution matching went wrong')
+		error('non-branching distribution matching went wrong')
 	end
-	null_distribution 	= null_cell{this_idx};
+	non_branching_distn 	= non_branching_cell{this_idx};
 end

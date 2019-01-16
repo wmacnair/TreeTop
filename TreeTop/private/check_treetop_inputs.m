@@ -130,6 +130,9 @@ function [options_struct] 	= check_options_struct(options_struct);
 	if ~isfield(options_struct, 'seed')
 		options_struct.seed 		= 73;
 	end
+	if ~isfield(options_struct, 'layout_tree_idx')
+		options_struct.layout_tree_idx 	= 6;
+	end
 	if ~isfield(options_struct, 'p_cutoff')
 		options_struct.p_cutoff 	= 0.95;
 	end

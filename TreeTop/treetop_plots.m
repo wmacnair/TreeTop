@@ -320,12 +320,17 @@ function [] = plot_branching_scores(treetop_struct, layout_struct, input_struct,
 	end
 	n_rows 			= 1;
 
+	% normalize branch scores with reference to scores from non-branching distribution
+	non_branching_distn = get_non_branching_distn(n_ref_cells, n_points, n_dims);
+	q_cutoff 			= quantile(non_branching_distn, options_struct.p_cutoff);
+	normed_scores 		= branch_scores / q_cutoff;
+
 	% plot scores in increasing order
 	subplot(n_rows, n_cols, 1)
-	[~, score_idx]	= sort(branch_scores);
+	[~, score_idx]	= sort(normed_scores);
 	hold on
 	gplot(layout_graph, layout_xy, '-k');
-	scatter(layout_xy(score_idx, 1), layout_xy(score_idx, 2), 30, branch_scores(score_idx), 'filled');
+	scatter(layout_xy(score_idx, 1), layout_xy(score_idx, 2), 30, normed_scores(score_idx), 'filled');
 	xlim([0, 1])
 	ylim([0, 1])
 	hold off
@@ -335,28 +340,23 @@ function [] = plot_branching_scores(treetop_struct, layout_struct, input_struct,
 	set(gca, 'YTickLabel', '')
 	xlabel('TreeTop 1')
 	ylabel('TreeTop 2')
-	max_score		= max(branch_scores);
-	title_str 		= {'Branching scores', sprintf('(max = %.1f)', max_score)};
+	max_score		= max(normed_scores);
+	title_str 		= {'Relative branching scores', sprintf('(max = %.1f)', max_score)};
 	title(title_str)
 
 	% plot distribution of scores relative to defined cutoff
 	subplot(n_rows, n_cols, 2)
-	null_distribution 	= get_null_distribution(n_ref_cells, n_points, n_dims);
-	p_cutoff 			= options_struct.p_cutoff;
-	q_cutoff 			= quantile(null_distribution, p_cutoff);
 	hold on
-	ecdf(branch_scores)
+	ecdf(normed_scores)
 	ylim_vals 		= ylim(gca);
-	if q_cutoff < Inf
-		line([q_cutoff, q_cutoff], ylim_vals, 'linestyle', '--', 'color', 'k');
-	end
+	line([1, 1], ylim_vals, 'linestyle', '--', 'color', 'k');
 	hold off
 
 	% label graph
-	n_signif 		= sum(branch_scores > q_cutoff);
-	xlabel('Branching score')
+	n_branch_pts 	= sum(normed_scores > 1);
+	xlabel('Relative branching score')
 	ylabel('ECDF(score)')
-	title_str 		= {'Distribution of scores', sprintf('(%d above %d%% threshold)', n_signif, p_cutoff*100)};
+	title_str 		= {'Distribution of scores', sprintf('(%d higher than non-branching distribution)', n_branch_pts)};
 	title(title_str)
 
 	% plot branches for highest score
@@ -371,7 +371,11 @@ function [] = plot_branching_scores(treetop_struct, layout_struct, input_struct,
 	branch_list		= branch_counts(:, 1);
 	disp_branches 	= branch_list(branch_counts(:, 1) > 0 & branch_counts(:, 2) > 1);
 	show_idx 		= ismember(best_branches, disp_branches);
-	better_gscatter(layout_xy( show_idx, 1), layout_xy( show_idx, 2), best_branches( show_idx ));
+	if max_score > 1
+		better_gscatter(layout_xy(show_idx, 1), layout_xy(show_idx, 2), best_branches(show_idx));
+	else
+		plot(layout_xy(:, 1), layout_xy(:, 2), '.', 'markersize', 10);
+	end
 
 	% plot branching point itself
 	split_idx 		= best_branches == 0;
@@ -409,7 +413,7 @@ function [] = plot_branching_scores(treetop_struct, layout_struct, input_struct,
 		branches_by_cell 	= branches_by_cell(cells_to_keep);
 		celltype_vector 	= celltype_vector(cells_to_keep);
 
-		% put in order from top left to rop right
+		% put in order from top left to top right
 		[mean_branch_by_celltype, labels]		= grpstats(branches_by_cell, celltype_vector, {'mean', 'gname'});
 		[~, sort_idx]							= sort(mean_branch_by_celltype);
 		col_order								= labels(sort_idx);
@@ -425,87 +429,6 @@ function [] = plot_branching_scores(treetop_struct, layout_struct, input_struct,
 	plot_fig(fig, plot_stem, file_ext, fig_size)
 end
 
-%% plot_contingency_table: 
-function plot_contingency_table(branches, celltypes, row_order, col_order)
-	% do crosstab of branches against gates
-	[branch_xtab, ~, ~, labels]		= crosstab(branches, celltypes);
-
-	% calculate NMI between them
-	[~, ~, branch_int] 	= unique(branches);
-	[~, ~, cell_int] 	= unique(celltypes);
-	this_nmi			= nmi(branch_int, cell_int);
-
-	% mess about with labels
-	row_labels 		= labels(:, 1);
-	row_labels 		= row_labels(~cellfun(@isempty, row_labels));
-	col_labels 		= labels(:, 2);
-	col_labels 		= col_labels(~cellfun(@isempty, col_labels));
-
-	% normalize by celltype
-	normed_xtab 	= bsxfun(@rdivide, branch_xtab, sum(branch_xtab, 1));
-	other_normed 	= bsxfun(@rdivide, branch_xtab, sum(branch_xtab, 2));
-
-	% % % put clusters in right order
-	% % [~, row_order] 	= sort(row_labels);
-	% % row_labels 		= row_labels(row_order);
-	% % normed_xtab 	= normed_xtab(row_order, :);
-
-	% % get right order for celltypes in right order
-	% link 			= linkage(normed_xtab', 'complete');
-	% dist_mat 		= pdist(normed_xtab');
-	% col_order 		= optimalleaforder(link, dist_mat);
-
-	% % get right order for clusters
-	% link 			= linkage(other_normed, 'complete');
-	% dist_mat 		= pdist(other_normed);
-	% row_order 		= optimalleaforder(link, dist_mat);
-
-	% % put everything in order
-	% row_labels 		= row_labels(row_order);
-	% col_labels 		= col_labels(col_order);
-	% normed_xtab 	= normed_xtab(row_order, col_order);
-	if exist('row_order', 'var') && ~isempty(row_order)
-		if ~isequal(sort(row_labels(:)), sort(row_order(:)))
-			error('row_order does not match row labels')
-		end
-		row_idx 		= cellfun(@(this_label) find(strcmp(this_label, row_labels)), row_order);
-		row_labels 		= row_labels(row_idx);
-		normed_xtab 	= normed_xtab(row_idx, :);
-	end
-	if exist('col_order', 'var') && ~isempty(col_order)
-		if ~isequal(sort(col_labels(:)), sort(col_order(:)))
-			error('col_order does not match col labels')
-		end
-		col_idx 		= cellfun(@(this_label) find(strcmp(this_label, col_labels)), col_order);
-		col_labels 		= col_labels(col_idx);
-		normed_xtab 	= normed_xtab(:, col_idx);
-	end
-
-	% add text of NMI over top
-	val_labels 			= arrayfun(@(x) sprintf('%.1f', x), normed_xtab, 'unif', false);
-	[mesh_x, mesh_y] 	= meshgrid(1:size(normed_xtab, 2), 1:size(normed_xtab, 1));
-	non_zero_idx 		= normed_xtab(:) > 0;
-
-	% plot heatmap of celltypes per cluster, normalized by celltype total (?)
-	imagesc(normed_xtab)
-	text(mesh_x(non_zero_idx), mesh_y(non_zero_idx), val_labels(non_zero_idx), 'FontSize', 8, 'HorizontalAlignment', 'center')
-
-	% add labels
-	ax 				= gca;
-	set(gca,'TickLabelInterpreter','none')
-	col_ticks 		= 1:size(normed_xtab, 2);
-	xlim([min(col_ticks)-0.5, max(col_ticks)+0.5])
-	set(ax, 'XTick', col_ticks);
-	set(ax, 'XTickLabel', col_labels);
-	ax.XTickLabelRotation 	= 45;
-	row_ticks 		= 1:size(normed_xtab, 1);
-	set(ax, 'YTick', row_ticks);
-	set(ax, 'YTickLabel', row_labels);
-
-	% add title
-	title({'Allocation of gates to branches', sprintf('(NMI = %.2f)', this_nmi)})
-end
-
 %% grey_gplot: 
 function h2 = grey_gplot(layout_graph, layout_xy)
 	gplot(layout_graph, layout_xy, '-k');
@@ -513,47 +436,6 @@ function h2 = grey_gplot(layout_graph, layout_xy)
 	h2 				= get(h, 'Children');
 	grey_val 		= 0.8;
 	set(h2, 'color', [grey_val, grey_val, grey_val]);
-end
-
-%% nmi: 
-function z = nmi(x, y)
-	% Compute normalized mutual information I(x,y)/sqrt(H(x)*H(y)) of two discrete variables x and y.
-	% Input:
-	%   x, y: two integer vector of the same length 
-	% Ouput:
-	%   z: normalized mutual information z=I(x,y)/sqrt(H(x)*H(y))
-	% Written by Mo Chen (sth4nth@gmail.com).
-	assert(numel(x) == numel(y));
-	n 		= numel(x);
-	x 		= reshape(x,1,n);
-	y 		= reshape(y,1,n);
-
-	l 		= min(min(x),min(y));
-	x 		= x-l+1;
-	y 		= y-l+1;
-	k 		= max(max(x),max(y));
-
-	idx 	= 1:n;
-	Mx 		= sparse(idx,x,1,n,k,n);
-	My 		= sparse(idx,y,1,n,k,n);
-	Pxy 	= nonzeros(Mx'*My/n); %joint distribution of x and y
-	Hxy 	= -dot(Pxy,log2(Pxy));
-
-
-	% hacking, to elimative the 0log0 issue
-	Px 		= nonzeros(mean(Mx,1));
-	Py 		= nonzeros(mean(My,1));
-
-	% entropy of Py and Px
-	Hx 		= -dot(Px,log2(Px));
-	Hy 		= -dot(Py,log2(Py));
-
-	% mutual information
-	MI 		= Hx + Hy - Hxy;
-
-	% normalized mutual information
-	z 		= sqrt((MI/Hx)*(MI/Hy));
-	z 		= max(0,z);
 end
 
 %% plot_branch_profiles: plot scores for all points over graph layout

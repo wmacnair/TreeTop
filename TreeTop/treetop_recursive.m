@@ -1,4 +1,4 @@
-%% treetop_recursive: first sample ensemble of trees, do layouts. then calculate p-value for bifurcations
+%% treetop_recursive: First sample ensemble of trees, do layouts. Then check whether we think there are further bifurcations.
 function treetop_recursive(input_struct, options_struct)
 	fprintf('\nrunning TreeTop recursively\n')
 
@@ -10,7 +10,10 @@ function treetop_recursive(input_struct, options_struct)
 	treetop_one_recursion(input_struct, options_struct)
 
 	% draw results together, plot
-	process_recursive_outputs(input_struct, options_struct);
+	recursive_struct 	= process_recursive_outputs(input_struct, options_struct);
+
+	% do some plotting
+	plot_recursive_outputs(input_struct, options_struct, recursive_struct);
 
 	fprintf('\ndone.\n\n')
 end
@@ -34,13 +37,13 @@ function treetop_one_recursion(input_struct, options_struct)
 	% get treetop outputs
 	treetop_struct 	= get_treetop_outputs(input_struct);
 
-	% check whether branch is significant
-	[signif_flag, n_branches] 	= is_branch_signif(input_struct, options_struct, treetop_struct);
+	% check whether branch has score above non-branching distribution
+	[has_branch, n_branches] 	= check_for_branches(input_struct, options_struct, treetop_struct);
 
-	if signif_flag
-		fprintf('significant branch point found for %s; zooming in to %d branches\n', input_struct.save_stem, n_branches);
+	if has_branch
+		fprintf('branch point found for %s; zooming in to %d branches\n', input_struct.save_stem, n_branches);
 		% split and save
-		[branch_input_cell, branch_options_cell] 		= split_treetop_branches(input_struct, options_struct, treetop_struct);
+		[branch_input_cell, branch_options_cell, branch_check] 		= split_treetop_branches(input_struct, options_struct, treetop_struct);
 
 		% tidy up some memory before we recurse
 		clear treetop_struct
@@ -51,35 +54,39 @@ function treetop_one_recursion(input_struct, options_struct)
 			branch_options 	= branch_options_cell{ii};
 
 			% run recursive on this
-			treetop_one_recursion(branch_input, branch_options);
+			if branch_check(ii)
+				treetop_one_recursion(branch_input, branch_options);
+			else
+				save_dummy_outputs_for_tiny_branches(branch_input, branch_options);
+			end
 		end
 	else
-		fprintf('no significant branch point found for %s; stopping recursion\n', input_struct.save_stem)
+		fprintf('no branch point found for %s; stopping recursion\n', input_struct.save_stem)
 	end
 end
 
-%% is_branch_signif: 
-function [signif_flag, n_branches] = is_branch_signif(input_struct, options_struct, treetop_struct)
-	% get null distribution
+%% check_for_branches: 
+function [has_branch, n_branches] = check_for_branches(input_struct, options_struct, treetop_struct)
+	% get non-branching distribution
 	[n_points, n_dims] 	= size(treetop_struct.used_data);
 	n_ref_cells			= options_struct.n_ref_cells;
-	null_distribution 	= get_null_distribution(n_ref_cells, n_points, n_dims);
+	non_branching_distn = get_non_branching_distn(n_ref_cells, n_points, n_dims);
 
-	% get best score
+	% get scores, normalize
 	branch_scores 		= treetop_struct.branch_scores;
-	best_score 			= max(branch_scores);
+	cutoff_q 			= quantile(non_branching_distn, options_struct.p_cutoff);
+	normed_scores 		= branch_scores / cutoff_q;
+	best_score 			= max(normed_scores);
 	
-	% check whether higher than 95% quantile
-	p_cutoff 			= options_struct.p_cutoff;
-	cutoff_q 			= quantile(null_distribution, p_cutoff);
-	signif_flag 		= best_score > cutoff_q;
+	% check whether higher than 1
+	has_branch 			= best_score > 1;
 
 	% calculate n_branches
 	n_branches 			= numel(unique(treetop_struct.best_branches)) - 1 ;
 end
 
 %% split_treetop_branches: 
-function [branch_input_cell, branch_options_cell] = split_treetop_branches(input_struct, options_struct, treetop_struct)
+function [branch_input_cell, branch_options_cell, branch_check] = split_treetop_branches(input_struct, options_struct, treetop_struct)
 	% get branches, scores
 	best_branches 		= treetop_struct.best_branches;
 	branch_point 		= find(best_branches == 0);
@@ -112,7 +119,7 @@ function [branch_input_cell, branch_options_cell] = split_treetop_branches(input
 	% cycle through branches
 	for ii = 1:n_branches
 		% restrict to this branch
-		this_branch 	= unique_branches(ii);
+		this_branch 			= unique_branches(ii);
 
 		% which datapoints to keep? (we also pass the branch point through)
 		node_idx 				= find(ismember(best_branches, [0, this_branch]));
@@ -121,8 +128,7 @@ function [branch_input_cell, branch_options_cell] = split_treetop_branches(input
 		% check whether there are enough
 		n_nodes					= sum(nodes_to_keep);
 		if n_nodes < 200
-			branch_check(ii)	= false;
-			continue
+			branch_check(ii)		= false;
 		end
 
 		% make new input_struct
@@ -179,10 +185,6 @@ function [branch_input_cell, branch_options_cell] = split_treetop_branches(input
 		branch_input_cell{ii} 	= branch_input;
 		branch_options_cell{ii} = branch_options;
 	end
-	
-	% remove branches there weren't enough cells for
-	branch_input_cell	= branch_input_cell(branch_check);
-	branch_options_cell	= branch_options_cell(branch_check);
 end
 
 %% make_branch_options: check # ref cells: 
@@ -211,13 +213,40 @@ function branch_options = make_branch_options(all_struct, options_struct)
 	branch_options.outlier 		= 0;
 end
 
+%% save_dummy_outputs_for_tiny_branches:
+function save_dummy_outputs_for_tiny_branches(branch_input, branch_options)
+	% define things that might already be saved
+	tiny_branch_file 	= fullfile(branch_input.output_dir, 'outputs_for_tiny_branch.mat');
+
+	% save if necessary
+	% if ~exist(tiny_branch_file, 'file')
+	if true
+		% unpack
+		branch_dir 		= branch_input.output_dir;
+		branch_stem 	= branch_input.save_stem;
+
+		% load up inputs
+		inputs_file 			= sprintf('%s treetop inputs.mat', branch_stem);
+		inputs_path 			= fullfile(branch_dir, inputs_file);
+		load(inputs_path);
+
+		% fake tree_variables file
+		cell_assignments_top 	= all_struct.cell_assignments_top;
+		cell_assignments 		= cell_assignments_top;
+
+		% save
+		save(tiny_branch_file, 'cell_assignments_top', 'cell_assignments');
+	end
+end
+
 %% process_recursive_outputs: rejoin all recursive outputs, somehow...
-function process_recursive_outputs(input_struct, options_struct)
+function recursive_struct = process_recursive_outputs(input_struct, options_struct)
 	% recursively look for branches, get outputs for each
 	fprintf('getting outputs for each recursive branch\n')
 	% if already done, load
 	recursive_output_file 	= fullfile(input_struct.output_dir, sprintf('%s recursive outputs.mat', input_struct.save_stem));
-	if exist(recursive_output_file, 'file')
+	% if exist(recursive_output_file, 'file')
+	if false
 		load(recursive_output_file, 'recursive_struct')
 	else
 		[stem_outputs, struct_outputs] 	= get_all_branch_outputs(input_struct.output_dir);
@@ -225,11 +254,10 @@ function process_recursive_outputs(input_struct, options_struct)
 		stem_outputs{1}		= 'top';
 
 		% put everything together, do some double-checking along the way
-		recursive_struct 	= assemble_struct_outputs(stem_outputs, struct_outputs, input_struct, options_struct);
+		recursive_struct 					= assemble_struct_outputs(stem_outputs, struct_outputs, input_struct, options_struct);
+		recursive_struct.celltype_vector 	= struct_outputs{1}.celltype_vector;
+		recursive_struct.cell_assignments 	= struct_outputs{1}.cell_assignments;
 	end
-
-	% do some plotting
-	plot_recursive_outputs(input_struct, options_struct, recursive_struct);
 end
 
 %% get_all_branch_outputs: 
@@ -245,7 +273,7 @@ function [stem_outputs, struct_outputs] = get_all_branch_outputs(input_dir)
 		this_stem 	= [this_stem, ext];
 	end
 	input_struct 		= struct('output_dir', input_dir, 'save_stem', this_stem);
-	this_struct 		= get_treetop_outputs(input_struct);
+	this_struct 		= get_treetop_outputs_recursive(input_struct);
 
 	% put outputs together
 	stem_outputs 		= {this_stem};
@@ -269,6 +297,28 @@ function [stem_outputs, struct_outputs] = get_all_branch_outputs(input_dir)
 	end
 end
 
+%% get_treetop_outputs_recursive: 
+function this_struct = get_treetop_outputs_recursive(input_struct)
+	% define file to check
+	tiny_branch_file 	= fullfile(input_struct.output_dir, 'outputs_for_tiny_branch.mat');
+
+	% if the branch was too small to run, load up the dummy outputs
+	if exist(tiny_branch_file, 'file')
+		load(tiny_branch_file, 'cell_assignments_top', 'cell_assignments');
+		this_struct 	= struct( ...
+			'cell_assignments_top', {cell_assignments_top}, ...
+			'cell_assignments', 	{cell_assignments} ...
+			);
+		this_struct.run_flag 	= false;
+
+	% otherwise load real outputs
+	else
+		this_struct 			= get_treetop_outputs(input_struct);
+		this_struct.run_flag 	= true;
+
+	end
+end
+
 %% assemble_struct_outputs: 
 function recursive_struct = assemble_struct_outputs(stem_outputs, struct_outputs, input_struct, options_struct)
 	% unpack
@@ -278,13 +328,13 @@ function recursive_struct = assemble_struct_outputs(stem_outputs, struct_outputs
 	branch_depths 		= cellfun(@(str) length(regexp(str, '_')), stem_outputs);
 	max_depth 			= max(branch_depths);
 
+	% trim names
+	short_branch_names 	= cellfun(@(str) regexprep(str, 'branch_', ''), stem_outputs, 'unif', false);
+
 	if max_depth == 0
 		% we don't need to do all the stuff below if there's no branching
 		[final_labels, branch_tree]		= make_no_branch_variables(n_nodes);
 	else
-		% trim names
-		short_branch_names 	= cellfun(@(str) regexprep(str, 'branch_', ''), stem_outputs, 'unif', false);
-
 		% define storage
 		all_branch_labels 	= cell(n_nodes, max_depth);
 
@@ -317,8 +367,8 @@ function recursive_struct = assemble_struct_outputs(stem_outputs, struct_outputs
 			node_idx 							= cellfun(@str2num, labels(:, 1));
 			all_branch_labels(node_idx, ii) 	= node_labels;
 
-			% do some tweaking of branch_tree
-			branch_tree			= update_branch_tree(ii, branch_depths, short_branch_names, struct_outputs, branch_tree);
+			% % do some tweaking of branch_tree
+			% branch_tree			= update_branch_tree(ii, branch_depths, short_branch_names, struct_outputs, branch_tree);
 		end
 
 		% make tree symmetric
@@ -336,7 +386,7 @@ function recursive_struct = assemble_struct_outputs(stem_outputs, struct_outputs
 	end
 
 	% make branching point lookup table
-	[branch_points, branch_ps] 	= cellfun(@(this_struct) find_branch_point_xys(this_struct), struct_outputs);
+	[branch_points, point_scores] 	= cellfun(@(this_struct) find_branch_point_xys(this_struct, options_struct), struct_outputs);
 	
 	% one option: 
 		% for every cell
@@ -351,7 +401,8 @@ function recursive_struct = assemble_struct_outputs(stem_outputs, struct_outputs
 		'node_labels',		{final_labels}, ...
 		'branch_tree', 		{branch_tree}, ...
 		'branch_points', 	{branch_points}, ...
-		'branch_ps',		{branch_ps} ...
+		'branch_names', 	{short_branch_names}, ...
+		'point_scores',		{point_scores} ...
 		);
 
 	% save outputs
@@ -377,9 +428,12 @@ function branch_tree = initialize_branch_tree(stem_outputs)
 	for ii = 2:n_branches
 		% get this branch
 		this_branch			= stem_outputs{ii};
+
 		% trim, match
-		trimmed_branch		= this_branch(1:end-2);
+		end_idx 			= regexp(this_branch, '_[0-9]+$')-1;
+		trimmed_branch		= this_branch(1:end_idx);
 		parent_idx			= find(strcmp(trimmed_branch, stem_outputs));
+
 		% store
 		branch_tree(parent_idx, ii)	= 1;
 	end
@@ -396,8 +450,11 @@ function branch_tree = update_branch_tree(ii, branch_depths, short_branch_names,
 	if ii > 1
 		% find parent branch points for each one at this depth
 		depth_idx 			= branch_depths == ii;
+		% depth_names 		= short_branch_names(depth_idx);
+		% parent_branches		= unique(cellfun(@(this_name) this_name(1:end-2), depth_names, 'unif', false));
 		depth_names 		= short_branch_names(depth_idx);
-		parent_branches		= unique(cellfun(@(this_name) this_name(1:end-2), depth_names, 'unif', false));
+		end_idxs 			= cellfun(@(this_name) regexp(this_name, '_[0-9]+$')-1, depth_names);
+		parent_branches		= unique(cellfun(@(ii) depth_names{ii}(1:end_idxs(ii)), 1:length(depth_names), 'unif', false));
 
 		for this_branch = parent_branches
 			% which is parent, and which are children
@@ -448,35 +505,46 @@ function branch_tree = update_branch_tree(ii, branch_depths, short_branch_names,
 end
 
 %% find_branch_point_xys: 
-function [branch_point, p_val] = find_branch_point_xys(this_struct)
-	% get appropriate null distribution
-	[n_ref_cells, n_dims] 	= size(this_struct.used_values);
-	n_points				= size(this_struct.cell_assignments, 1);
-	null_distribution 		= get_null_distribution(n_ref_cells, n_points, n_dims);
-
-	% unpack
-	branch_scores 			= this_struct.branch_scores;
-	cell_assignments 		= this_struct.cell_assignments;
-
-	if isfield(this_struct, 'cell_assignments_top')
+function [branch_point, point_score] = find_branch_point_xys(this_struct, options_struct)
+	% check if treetop was run on this branch
+	if this_struct.run_flag == true
 		% unpack
-		cell_assignments_top 	= this_struct.cell_assignments_top;
+		branch_scores 				= this_struct.branch_scores;
+		cell_assignments 			= this_struct.cell_assignments;
 
-		% calculate where the branch point lines up at the top
-		[max_score, max_idx] 	= max(branch_scores);
-		branch_idx 				= cell_assignments == max_idx;
-		branch_top 				= cell_assignments_top(branch_idx);
+		% get appropriate non-branching distribution, normalize scores
+		[n_ref_cells, n_dims] 		= size(this_struct.used_values);
+		n_points					= size(this_struct.cell_assignments, 1);
+		non_branching_distn 		= get_non_branching_distn(n_ref_cells, n_points, n_dims);
+		cutoff_q 					= quantile(non_branching_distn, options_struct.p_cutoff);
+		normed_scores 				= branch_scores / cutoff_q;
 
-		% find which node is best fit
-		[node_counts, node_labels] 	= grpstats(branch_top, branch_top, {'numel', 'gname'});
-		[~, max_node] 				= max(node_counts);
-		branch_point 				= str2num(node_labels{max_node});
-	else
-		[max_score, branch_point]	= max(branch_scores);
+		% now calculate location of best branch point
+		if isfield(this_struct, 'cell_assignments_top')
+			% unpack
+			cell_assignments_top 		= this_struct.cell_assignments_top;
+
+			% calculate where the branch point lines up at the top
+			[max_score, max_idx] 		= max(normed_scores);
+			branch_idx 					= cell_assignments == max_idx;
+			branch_top 					= cell_assignments_top(branch_idx);
+
+			% find which node is best fit
+			[node_counts, node_labels] 	= grpstats(branch_top, branch_top, {'numel', 'gname'});
+			[~, max_node] 				= max(node_counts);
+			branch_point 				= str2num(node_labels{max_node});
+		else
+			[max_score, branch_point]	= max(normed_scores);
+		end
+		point_score 			= max_score;
+
+    else
+		% dummy branch_point
+		branch_point 			= 0;
+
+		% give branch score of 0
+		point_score 			= 0;
 	end
-
-	% calculate 'p-value'
-	p_val 				= mean(max_score < null_distribution);
 end
 
 %% plot_recursive_outputs: 
@@ -485,36 +553,140 @@ function [] = plot_recursive_outputs(input_struct, options_struct, recursive_str
 
 	% get layout
 	recursive_flag 	= true;
-	layout_struct 	= get_layout_struct(input_struct, options_struct, [], recursive_flag);
+	layout_struct 	= get_layout_struct(input_struct, options_struct, recursive_flag);
 
 	% unpack
 	node_labels 	= recursive_struct.node_labels;
 	branch_points 	= recursive_struct.branch_points;
-	branch_ps 		= recursive_struct.branch_ps;
-	log_ps 			= -log10(branch_ps);
+	branch_names 	= recursive_struct.branch_names;
+	point_scores 	= recursive_struct.point_scores;
 	branch_tree 	= recursive_struct.branch_tree;
+
+	celltype_vector 	= recursive_struct.celltype_vector;
+	cell_assignments 	= recursive_struct.cell_assignments;
+	n_samples 			= length(unique(celltype_vector));
+
 	file_ext 		= options_struct.file_ext;
+
 	layout_xy 		= layout_struct.layout_xy;
 	layout_graph 	= layout_struct.layout_graph;
 
+	% edit where branch points are for branches where treetop not run
+	branch_points 	= tweak_branch_point_xys(layout_xy, node_labels, branch_names, branch_points);
+	branch_xy 		= layout_xy(branch_points, :);
+
 	% set up figure
 	fig 			= figure('visible', 'off');
-	n_cols 			= 3;
-	n_rows 			= 1;
+	n_cols 			= 2;
+	n_rows 			= 2;
 	plot_ii 		= 1;
 	grey_val 		= 0.8;
 
 	% plot branches as colour
 	subplot(n_rows, n_cols, plot_ii)
 	plot_ii 		= plot_ii+1;
+	plot_branches_coloured(layout_graph, layout_xy, grey_val, node_labels)
+
+	% plot branches as text
+	subplot(n_rows, n_cols, plot_ii)
+	plot_ii 		= plot_ii+1;
+	plot_branches_labelled(layout_graph, layout_xy, grey_val, node_labels)
+
+	% plot contingency table
+	if n_samples > 1
+		subplot(n_rows, n_cols, plot_ii)
+		plot_ii 		= plot_ii+1;
+		plot_contingency_table_recursive(recursive_struct)
+	end
+
+	% plot branch points
+	subplot(n_rows, n_cols, plot_ii)
+	plot_ii 		= plot_ii+1;
+	plot_branch_tree(layout_graph, layout_xy, grey_val, branch_tree, branch_xy, point_scores)
+
+	% save outputs
+	plot_stem 		= fullfile(input_struct.output_dir, sprintf('%s recursive branches', input_struct.save_stem));
+	plot_unit 		= 4;
+	fig_size 		= [plot_unit*n_cols*1.1, plot_unit*n_rows];
+	plot_fig(fig, plot_stem, file_ext, fig_size)
+end
+
+%% tweak_branch_point_xys: 
+function branch_points = tweak_branch_point_xys(layout_xy, node_labels, branch_names, branch_points)
+	for ii = 1:length(branch_points)
+		if branch_points(ii) == 0
+			% find which points correspond to this branch
+			this_name 			= branch_names{ii};
+	
+			% find point closest to centre
+			branch_idx 			= find(strcmp(node_labels, this_name));
+			branch_xy 			= layout_xy(branch_idx, :);
+			mean_xy 			= mean(branch_xy, 1);
+			temp 				= branch_xy - repmat(mean_xy, size(branch_xy, 1), 1);
+			[~, near_idx] 		= min( sum(temp.^2,2) );
+			branch_points(ii) 	= branch_idx(near_idx);
+		end
+	end
+end
+
+%% plot_branch_tree: 
+function plot_branch_tree(layout_graph, layout_xy, grey_val, branch_tree, branch_xy, point_scores)
 	hold on
+	% plot whole graph behind
 	gplot(layout_graph, layout_xy, '-k');
 	h 			= gca;
 	h2 			= get(h, 'Children');
-	grey_val 	= 0.8;
 	set(h2, 'color', [grey_val, grey_val, grey_val])
-	[~, ~, node_labels_idx] 	= unique(node_labels);
-	better_gscatter(layout_xy(:,1), layout_xy(:,2), node_labels_idx);
+
+	% plot graph connecting branch points
+	gplot(branch_tree, branch_xy, '-k');
+
+	% plot branch scores in order
+	[~, point_idx] 	= sort(point_scores);
+	scatter(branch_xy(point_idx, 1), branch_xy(point_idx, 2), [], point_scores(point_idx)', 'filled');
+	score_range 		= [0, ceil(max([point_scores(:); 1]))];
+	% point_size		= 40;
+	% size_vector 	= point_size * ones(size(branch_xy, 1), 1);
+	% size_vector(1) 	= point_size * 2;
+	plot_size 		= get(gca, 'Position');
+	bar_obj 		= colorbar;
+	set(gca, 'Position', plot_size);
+	bar_pos 		= get(bar_obj, 'position');
+	bar_pos(3:4) 	= bar_pos(3:4) / 2;
+	bar_pos(1)	 	= bar_pos(1) - bar_pos(3);
+	bar_pos(2)	 	= bar_pos(2) + bar_pos(4)/2;
+	set(bar_obj, 'position', bar_pos)
+	ylabel(bar_obj, 'Relative branching score', 'interpreter', 'none')
+
+	% where the position arguments are [xposition yposition width height].
+	caxis( score_range )
+	xlim([0,1])
+	ylim([0,1])
+	xlabel('TreeTop 1'); ylabel('TreeTop 2')
+
+	% labels
+	set(gca, 'XTickLabel', '')
+	set(gca, 'YTickLabel', '')
+	hold off
+end
+
+%% plot_branches_coloured: 
+function plot_branches_coloured(layout_graph, layout_xy, grey_val, node_labels)
+	hold on
+	gplot(layout_graph, layout_xy, '-k');
+	h 				= gca;
+	h2 				= get(h, 'Children');
+	grey_val 		= 0.8;
+	set(h2, 'color', [grey_val, grey_val, grey_val])
+	gscatter_for_recursive(layout_xy(:,1), layout_xy(:,2), node_labels);
+
+	% % plot branch scores in order
+	% [~, point_idx] 	= sort(point_scores);
+	% gplot(branch_tree, branch_xy, '-k');
+	% scatter(branch_xy(point_idx, 1), branch_xy(point_idx, 2), 60, point_scores(point_idx)', 'filled');
+	% score_range 	= [0, ceil(max([point_scores(:); 1]))];
+
+	% sort out plot
 	xlim([0, 1])
 	ylim([0, 1])
 	xlabel('TreeTop 1'); ylabel('TreeTop 2')
@@ -523,10 +695,117 @@ function [] = plot_recursive_outputs(input_struct, options_struct, recursive_str
 	% label graph
 	set(gca, 'XTickLabel', '')
 	set(gca, 'YTickLabel', '')
+end
 
-	% plot branches as text
-	subplot(n_rows, n_cols, plot_ii)
-	plot_ii 		= plot_ii+1;
+%% gscatter_for_recursive: slightly fancy plotting for recursive plots
+function [h_legend] = gscatter_for_recursive(x, y, node_labels, options)
+	% sort out holding
+	hold_status 	= ishold;
+	if ~hold_status
+		hold on
+	end
+
+	% get palette
+	ctype 		= 'qual';
+	palette 	= 'Set1';
+	point_size 	= 10;
+	legend_flag = false;
+	location 	= 'EastOutside';
+
+	if nargin > 3 
+		if isfield(options, 'palette')
+			palette 	= options.palette;
+		end
+		if isfield(options, 'size')
+			point_size 	= options.size;
+		end
+		if isfield(options, 'legend')
+			legend_flag = options.legend;
+		end
+		if isfield(options, 'leg_pos')
+			location 	= options.leg_pos;
+		end
+	end
+
+	% regex to get top level of branches, then see where they are
+	g_top		   = cellfun(@(c) regexp(c, '^[0-9]+', 'match'), node_labels);
+	[top_vals, ~, g_idx] 	= unique(g_top);
+	if ~iscell(top_vals)
+		top_vals 		= arrayfun(@num2str, top_vals, 'unif', false);
+	end
+
+	% how many top branches, sub-branches?
+	n_top 			= length(top_vals);
+	n_all 			= length(unique(node_labels));
+
+	% set up plots
+	h 				= zeros(n_all, 1);
+
+	% if more than nine of those, don't do anything fancy
+	if n_top > 9
+		[~, ~, all_idx] = unique(node_labels);
+		scatter(x, y, point_size, g_idx, 'filled');
+		
+	else
+		% define top-level palette
+		n_pal 			= max(n_top, 3);
+		pal_top 		= cbrewer(ctype, palette, n_pal);
+
+		% define counter for top branches
+		col_inc 		= 1;
+
+		% loop through top branches
+		for ii = 1:n_top
+			% which branch is this?
+			ii_val 			= top_vals{ii};
+			branch_idx 		= g_idx == ii;
+
+			% how many sub-branches?
+			sub_vals 		= unique(node_labels(branch_idx));
+			n_sub 			= length(sub_vals);
+
+			if n_sub==1
+				this_idx 		= strcmp(node_labels, sub_vals{1});
+				h(col_inc) 		= plot(x(this_idx), y(this_idx), '.', 'color', pal_top(ii, :), 'markersize', point_size*2);
+				col_inc 		= col_inc + 1;
+
+			else 
+				% make palette for sub_branches based on top branch colour
+				hsv_top 		= rgb2hsv(pal_top(ii, :));
+				hsv_sub 		= repmat(hsv_top, n_sub, 1);
+				s_range 		= [0.95, 0.05];
+				s_vector 		= linspace(s_range(1), s_range(2), n_sub);
+				v_vector 		= 1 - 0.6*(1-max(s_range))./(1 - s_vector);
+				hsv_sub(:, 2) 	= s_vector;
+				hsv_sub(:, 3) 	= v_vector;
+				pal_sub 		= hsv2rgb(hsv_sub);
+
+				% plot each sub-branch individually
+				for jj = 1:n_sub
+					this_sub 		= sub_vals{jj};
+					this_idx 		= strcmp(node_labels, this_sub);
+					h(col_inc) 		= plot(x(this_idx), y(this_idx), '.', 'color', pal_sub(jj, :), 'markersize', point_size*2);
+					col_inc 		= col_inc + 1;
+				end
+			end
+		end
+	end
+
+	% add branch points on top?
+
+	if legend_flag
+		h_legend 		= legend(h, g_vals{:}, 'Location', location);
+	else
+		h_legend 		= [];
+	end
+
+	if ~hold_status
+		hold off
+	end
+end
+
+%% plot_branches_labelled: 
+function plot_branches_labelled(layout_graph, layout_xy, grey_val, node_labels)
 	hold on
 	gplot(layout_graph, layout_xy, '-k');
 	h 			= gca;
@@ -541,53 +820,51 @@ function [] = plot_recursive_outputs(input_struct, options_struct, recursive_str
 	% label graph
 	set(gca, 'XTickLabel', '')
 	set(gca, 'YTickLabel', '')
-
-	% plot branch points
-	subplot(n_rows, n_cols, plot_ii)
-	plot_ii 		= plot_ii+1;
-	hold on
-	% plot whole graph behind
-	gplot(layout_graph, layout_xy, '-k');
-	h 			= gca;
-	h2 			= get(h, 'Children');
-	set(h2, 'color', [grey_val, grey_val, grey_val])
-
-	% plot graph connecting branch points
-	branch_xy 	= layout_xy(branch_points, :);
-	gplot(branch_tree, branch_xy, '-k');
-
-	% plot p values in order
-	[~, p_idx] 		= sort(log_ps);
-	scatter(branch_xy(p_idx, 1), branch_xy(p_idx, 2), [], log_ps(p_idx), 'filled');
-	p_range 		= -log10( [1, 1e-3] );
-	% point_size		= 40;
-	% size_vector 	= point_size * ones(size(branch_xy, 1), 1);
-	% size_vector(1) 	= point_size * 2;
-	plot_size 		= get(gca, 'Position');
-	bar_obj 		= colorbar;
-	set(gca, 'Position', plot_size);
-	bar_pos 		= get(bar_obj, 'position');
-	bar_pos(3:4) 	= bar_pos(3:4) / 2;
-	bar_pos(1)	 	= bar_pos(1) - bar_pos(3);
-	bar_pos(2)	 	= bar_pos(2) + bar_pos(4)/2;
-	set(bar_obj, 'position', bar_pos)
-	ylabel(bar_obj, '-log10(p values)', 'interpreter', 'none')
-
-	% where the position arguments are [xposition yposition width height].
-	caxis( p_range )
-	xlim([0,1])
-	ylim([0,1])
-	xlabel('TreeTop 1'); ylabel('TreeTop 2')
-
-	% labels
-	set(gca, 'XTickLabel', '')
-	set(gca, 'YTickLabel', '')
-	hold off
-	
-	% save outputs
-	plot_stem 		= fullfile(input_struct.output_dir, sprintf('%s recursive branches', input_struct.save_stem));
-	plot_unit 		= 6;
-	fig_size 		= [plot_unit*n_cols*1.2, plot_unit*n_rows];
-	plot_fig(fig, plot_stem, file_ext, fig_size)
 end
 
+%% plot_contingency_table_recursive: 
+function plot_contingency_table_recursive(recursive_struct)
+	% unpack
+	cell_assignments 	= recursive_struct.cell_assignments;
+	celltype_vector 	= recursive_struct.celltype_vector;
+	node_labels 		= recursive_struct.node_labels;
+	[branch_names, ~, node_idx] = unique(node_labels);
+
+	% remove any outliers
+	non_outlier_idx 	= cell_assignments ~= 0;
+	cell_assignments 	= cell_assignments(non_outlier_idx);
+	celltype_vector 	= celltype_vector(non_outlier_idx);
+
+	% % assign branches to all original cells
+	% branches_by_cell 	= node_idx(cell_assignments);
+
+	% % recalculate counts
+	% [branch_counts, count_labels] 	= grpstats(branches_by_cell, branches_by_cell, {'numel', 'gname'});
+	% count_labels					= cellfun(@(str) str2num(str), count_labels);
+
+	% % lookup table which has new label for each branch, according to order
+	% [~, count_order] 				= sort(-branch_counts);
+	% [~, ranked_labels] 				= sort(count_order);
+	% branches_by_size				= branch_names(count_order);
+
+	% % put in order from top left to top right, plot table
+	% [mean_branch_by_celltype, labels]		= grpstats(ranked_labels(branches_by_cell), celltype_vector, {'mean', 'gname'});
+	% [~, sort_idx]							= sort(mean_branch_by_celltype);
+	% col_order								= labels(sort_idx);
+	% plot_contingency_table(branch_names(branches_by_cell), celltype_vector, branches_by_size, col_order)
+
+	% recalculate counts
+	[branch_counts, count_labels] 	= grpstats(node_idx, node_idx, {'numel', 'gname'});
+	count_labels					= cellfun(@(str) str2num(str), count_labels);
+
+	% lookup table which has new label for each branch, according to order
+	[~, count_order] 				= sort(-branch_counts);
+	[~, ranked_labels] 				= sort(count_order);
+	branches_by_size				= branch_names(count_order);
+
+	% put in order from top left to top right, plot table
+	[mean_branch_by_celltype, labels]		= grpstats(ranked_labels(node_idx(cell_assignments)), celltype_vector, {'mean', 'gname'});
+	[~, sort_idx]							= sort(mean_branch_by_celltype);
+	col_order								= labels(sort_idx);
+	plot_contingency_table(branch_names(node_idx(cell_assignments)), celltype_vector, branches_by_size, col_order)
+end

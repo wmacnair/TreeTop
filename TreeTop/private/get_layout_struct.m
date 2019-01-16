@@ -1,5 +1,5 @@
 %% get_layout_struct: 
-function layout_struct = get_layout_struct(input_struct, options_struct, layout_tree_idx, recursive_flag)
+function layout_struct = get_layout_struct(input_struct, options_struct, recursive_flag)
 	% define default input
 	if ~exist('recursive_flag', 'var')
 		recursive_flag 	= false;
@@ -12,7 +12,8 @@ function layout_struct = get_layout_struct(input_struct, options_struct, layout_
 	layout_file 		= fullfile(input_struct.output_dir, sprintf('best layout %s.mat', input_struct.save_stem));
 
 	% if idx given, pick which type of layout to use, check input is ok, and force computation of layout
-	if exist('layout_tree_idx', 'var') && ~isempty(layout_tree_idx)
+	if isfield(options_struct, 'layout_tree_idx')
+        layout_tree_idx     = options_struct.layout_tree_idx;
 		if ~ismember(layout_tree_idx, 1:6)
 			error('invalid layout_tree_idx')
 		end

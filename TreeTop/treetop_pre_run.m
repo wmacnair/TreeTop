@@ -62,9 +62,9 @@ function [fig, fig_size] = plot_marginals_once(this_data, this_markers, unique_l
 	fig_size 		= [plot_unit*n_cols plot_unit*n_rows];
 
 	if cofactor == 5
-		bin_edges 		= 0:0.5:8;
+		cytof_edges 	= 0:0.5:8;
 	else
-		bin_edges 		= [];
+		cytof_edges 	= [];
 	end
 	
 	% do plots
@@ -74,17 +74,16 @@ function [fig, fig_size] = plot_marginals_once(this_data, this_markers, unique_l
 		this_col 	= this_data(:, ii);
 
 		hold on
+		if isempty(cytof_edges)
+			[~, bin_edges] 	= histcounts(this_col, 20);
+		else
+			bin_edges 		= cytof_edges;
+		end
 		for jj = 1:size(label_idx, 1)
-			if isempty(bin_edges)
-				histogram(this_col(label_idx{jj}), 20);
-			else
-				histogram(this_col(label_idx{jj}), bin_edges);
-			end
+			histogram(this_col(label_idx{jj}), bin_edges);
 		end
 		hold off
-		if ~isempty(bin_edges)
-			xlim([min(bin_edges), max(bin_edges)])
-		end
+		xlim([min(bin_edges), max(bin_edges)])
 		xlabel('Marker value')
 		ylabel('# cells')
 		title(this_markers{ii}, 'interpreter', 'none')

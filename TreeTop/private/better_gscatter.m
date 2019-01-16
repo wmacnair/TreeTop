@@ -39,23 +39,28 @@ function [h_legend] = better_gscatter(x, y, g, options)
 	n_cols 			= length(g_vals);
 	h 				= zeros(n_cols, 1);
 
-	if n_cols > 9
-		scatter(x, y, point_size, g_idx, 'filled');
+	if n_cols > 11
+		max_cols 		= 11;
+		pal_mat_short 	= cbrewer('div', 'RdYlBu', max_cols);
+		x_vals 			= (0:max_cols - 1) / (max_cols - 1);
+		x_queries 		= (0:n_cols - 1) / (n_cols - 1);
+		pal_mat 		= arrayfun(@(jj) interp1(x_vals, pal_mat_short(:,jj), x_queries)', 1:size(pal_mat_short,2), 'uniformoutput', false);
+		pal_mat 		= [pal_mat{:}];
+
+	elseif n_cols > 9 & n_cols <= 11
+		pal_mat 		= cbrewer('div', 'RdYlBu', n_cols);
 		
 	elseif n_cols < 3
 		pal_mat 		= cbrewer(ctype, palette, 3);
-
-		for ii = 1:n_cols
-			this_idx 	= g_idx == ii;
-			h(ii) 		= plot(x(this_idx), y(this_idx), '.', 'color', pal_mat(ii, :), 'markersize', point_size*2);
-		end
+		
 	else
 		pal_mat 		= cbrewer(ctype, palette, n_cols);
+		
+	end
 
-		for ii = 1:n_cols
-			this_idx 	= g_idx == ii;
-			h(ii) 		= plot(x(this_idx), y(this_idx), '.', 'color', pal_mat(ii, :), 'markersize', point_size*2);
-		end
+	for ii = 1:n_cols
+		this_idx 	= g_idx == ii;
+		h(ii) 		= plot(x(this_idx), y(this_idx), '.', 'color', pal_mat(ii, :), 'markersize', point_size*2);
 	end
 
 	if legend_flag
