@@ -97,7 +97,12 @@ end
 %% plot_mi: plot matrix of MI values, and max / mean MI values by marker
 function plot_mi(all_struct, input_struct, options_struct)
 	% calculate all MI pairs
-	mi_mat 				= calc_mi_mat(all_struct);
+	try
+		mi_mat 				= calc_mi_mat(all_struct);
+	catch lasterr
+		fprintf('Seems like the MIToolboxMex is not working. Try compiling it?\nMutual information not calculated.\n');
+		return
+	end
 
 	% order by max
 	max_mi 				= max(mi_mat);
@@ -133,7 +138,7 @@ function [mi_mat] = calc_mi_mat(all_struct)
 
 	% calculate MI
 	all_data 			= [all_struct.used_data, all_struct.extra_data];
-	[n_points, n_total]  = size(all_data);
+	[n_points, n_total] = size(all_data);
 	n_bins 				= ceil(n_points^(1/3));
 
 	% do discretization

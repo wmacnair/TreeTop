@@ -6,10 +6,14 @@ TreeTop is described in the paper _Tree-ensemble analysis tests for presence of 
 
 ## Installation
 
-TreeTop is implemented in MATLAB. To install TreeTop, copy the files here (either via `git clone https://github.com/wmacnair/TreeTop.git`, or via downloading and extracting a zip file) to somewhere on your MATLAB path.
+TreeTop is implemented in MATLAB. To install TreeTop, copy the files to somewhere suitable for storing MATLAB packages (either via `git clone https://github.com/wmacnair/TreeTop.git`, or via downloading and extracting a zip file).
+
+Once you have some unpacked files, change into the directory and run the function `install_treetop.m`. This will add the relevant folders to the path, and check that various necessary functions work.
+
+It is possible that you will need to compile some files in which case your platform will need to have a C compiler installed.
 
 ## Usage
 
-We recommend following the `treetop_tutorial` file for a guided tour of TreeTop, and a description of how to interpret the outputs.
+Once you have successfully set up TreeTop, we recommend following the `treetop_tutorial` file for a guided tour of TreeTop, and a description of how to interpret the outputs. This is found in the folder `./TreeTop/`.
 
 To replicate the results shown in the paper, please also download the data in the repository [TreeTop_data](https://github.com/wmacnair/TreeTop_data), and follow the instructions at the end of `treetop_tutorial`.

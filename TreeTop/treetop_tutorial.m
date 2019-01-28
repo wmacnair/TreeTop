@@ -1,9 +1,5 @@
-%% TreeTop: Installation and tutorial
+%% TreeTop: Tutorial
 % This document contains information about the installation and usage of TreeTop. [add paper details]
-
-
-%% Installation
-% Installing TreeTop is simple: copy the directory titled _TreeTop_ to somewhere on your path. If you wish to reproduce some of the examples shown in the paper, please also copy the folder _treetop_data_ to some location (does not have to be in the path).
 
 %% Overview
 % 
@@ -34,10 +30,15 @@
 % 
 % To run the following code, please enter the location of the |treetop_data| directory, and where you would like outputs to be saved.
 
-% define directory for data
-data_dir		= '/path/to/treetop_data';
-% define directory for outputs
-output_dir		= '/path/to/outputs';
+% define parent directory for data
+data_parent		= '/path/to/treetop_data';
+dataset_name 	= 'thymus';
+data_dir 		= fullfile(data_parent, dataset_name);
+
+% define parent directory for outputs
+output_parent	= '/path/to/output/parent_folder';
+output_name 	= 'thymus';
+output_dir 		= fullfile(output_parent, output_name);
 
 % check these
 if ~exist(data_dir, 'dir') | isempty(output_dir)
@@ -46,8 +47,8 @@ end
 
 % define input_struct
 input_struct 	= struct( ...
-	'data_dir', 			fullfile(data_dir, 'thymus'), ...
-	'output_dir', 			fullfile(output_dir, 'thymus'), ...
+	'data_dir', 			data_dir, ...
+	'output_dir', 			output_dir, ...
 	'used_markers', 		{{'DC02', 'DC03', 'DC04'}}, ...
 	'extra_markers', 		{{'CD27', 'CD4', 'CD5', 'CD127', 'CD44', 'CD69', 'CD117', 'CD62L', 'CD24', 'CD3', ...
 					'CD8', 'CD25', 'TCRb', 'BCL11b', 'CD11b', 'CD11c', 'CD161', 'CD19', 'CD38', 'CD45', ...
@@ -78,13 +79,13 @@ input_struct 	= struct( ...
 
 % define options_struct
 options_struct 	= struct( ...
-	'metric_name', 			'L1', ...
-	'n_ref_cells',			200, ...
+	'metric_name', 		'L1', ...
+	'n_ref_cells',		200, ...
 	'n_trees', 			1000, ...
 	'outlier',			0.01, ...
-	'threshold', 			0.2, ...
+	'threshold', 		0.2, ...
 	'sigma',			1e-4, ...
-	'file_ext', 			'png' ...
+	'file_ext', 		'png' ...
 	);
 
 
@@ -264,7 +265,9 @@ treetop_recursive(input_struct, options_struct)
 % # Circular synthetic data
 % # Triangular synthetic data
 % # B cell maturation
-% # Healthy human bone marrow, scRNAseq data
+% # Healthy human bone marrow, scRNAseq data (Paul et al., 2015)
+% # Healthy human bone marrow, scRNAseq data (Velten et al., 2017)
+% # Swiss roll synthetic data
 
 run_switch 	= 2;
 treetop_example_runs(data_dir, output_dir, run_switch)
