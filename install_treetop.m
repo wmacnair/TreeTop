@@ -45,7 +45,7 @@ function check_compiled_functions()
 
 	% report results
 	if dijk_works & mi_works
-		fprintf('All compiled files available and working; TreeTop should run without any problems');
+		fprintf('All compiled files available and working; TreeTop should run without any problems\n');
 	elseif dijk_works & ~mi_works
 		fprintf('The relevant compiled file for the mutual information toolbox was either not available or not working.\n')
 		fprintf('treetop should run ok, but outputs from the optional treetop_pre_run script will be incomplete.\n')
